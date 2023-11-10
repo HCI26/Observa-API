@@ -1,10 +1,10 @@
 
-from flask import Blueprint, abort, request, Response
+from flask import Blueprint, abort, request, Response, stream_with_context
 import api.service as service
 import cv2
 from models import User,SavedVisitor
 from datetime import datetime
-from main import app
+# from main import app
 import api.fake as fake
 from api import db
 
@@ -75,20 +75,19 @@ def add_visitor():
 def gen_frames(user_id):  
     url = "http://192.168.1.5:8080/video"
     cap = cv2.VideoCapture(url)
-    with app.app_context():
-        while True:
-            success, frame = cap.read()  # read the camera frame
-            if not success:
-                continue
-            else:
-                
-                analyzed_frame = service.videoAnalysis(frame,SavedVisitor.query.filter_by(user_id=user_id),)
-                ret, buffer = cv2.imencode('.jpg', analyzed_frame)
-                analyzed_frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                    b'Content-Type: image/jpeg\r\n\r\n' + analyzed_frame + b'\r\n')  # concat frame one by one and show result
+    # with app.app_context():
+    while True:
+        success, frame = cap.read()  # read the camera frame
+        if not success:
+            continue
+        else:
+            analyzed_frame = service.videoAnalysis(frame,SavedVisitor.query.filter_by(user_id=user_id),detector_backend="opencv")
+            ret, buffer = cv2.imencode('.jpg', frame)
+            analyzed_frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' + analyzed_frame + b'\r\n')  # concat frame one by one and show result
             
 @blueprint.route('/video/<int:user_id>')
 def video_feed(user_id):
-    return Response(gen_frames(user_id),
+    return Response(stream_with_context(gen_frames(user_id)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
