@@ -9,45 +9,6 @@ from models import User,SavedVisitor
 from sqlalchemy.orm import Query
 
 
-def represent(img_path, model_name, detector_backend, enforce_detection, align):
-    result = {}
-    embedding_objs = DeepFace.represent(
-        img_path=img_path,
-        model_name=model_name,
-        detector_backend=detector_backend,
-        enforce_detection=enforce_detection,
-        align=align,
-    )
-    result["results"] = embedding_objs
-    return result
-
-
-def verify(
-    img1_path, img2_path, model_name, detector_backend, distance_metric, enforce_detection, align
-):
-    obj = DeepFace.verify(
-        img1_path=img1_path,
-        img2_path=img2_path,
-        model_name=model_name,
-        detector_backend=detector_backend,
-        distance_metric=distance_metric,
-        align=align,
-        enforce_detection=enforce_detection,
-    )
-    return obj
-
-
-def analyze(img_path, actions, detector_backend, enforce_detection, align):
-    result = {}
-    demographies = DeepFace.analyze(
-        img_path=img_path,
-        actions=actions,
-        detector_backend=detector_backend,
-        enforce_detection=enforce_detection,
-        align=align,
-    )
-    result["results"] = demographies
-    return result
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -120,7 +81,7 @@ def findInDB(
     resp_obj = []
 
     for target_img, target_region, _ in target_objs:
-        target_embedding_obj = represent(
+        target_embedding_obj = DeepFace.represent(
             img_path=target_img,
             model_name=model_name,
             enforce_detection=enforce_detection,
@@ -183,7 +144,7 @@ def videoAnalysis(
     img,
     saved_visitors_query:Query,
     model_name="VGG-Face",
-    detector_backend="retinanet",
+    detector_backend="retinaface",
     distance_metric="cosine",
     enable_face_analysis=False,
     
@@ -214,7 +175,7 @@ def videoAnalysis(
         print("Emotion model is just built")
     # -----------------------
     # call a dummy find function for db_path once to create embeddings in the initialization
-    DeepFace.find(
+    findInDB(
         img_path=np.zeros([224, 224, 3]),
         saved_visitors_query=saved_visitors_query,
         model_name=model_name,
