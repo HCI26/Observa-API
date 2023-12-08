@@ -1,12 +1,14 @@
 
 from flask import Blueprint, abort, request, Response, stream_with_context
-import api.service as service
+# import api.service as service
+
 import cv2
 from models import User,SavedVisitor
 from datetime import datetime
 # from main import app
 import api.fake as fake
 from api import db
+from api.face_recognition import FaceRecognizer,FaceAnalyzer,VideoAnalyzer
 
 blueprint = Blueprint("routes", __name__)
 
@@ -72,22 +74,56 @@ def add_visitor():
     return {"message": "new visitor added successfully"}, 201
 
 
-def gen_frames(user_id):  
-    url = "http://192.168.1.5:8080/video"
-    cap = cv2.VideoCapture(url)
-    # with app.app_context():
-    while True:
-        success, frame = cap.read()  # read the camera frame
-        if not success:
-            continue
-        else:
-            analyzed_frame = service.videoAnalysis(frame,SavedVisitor.query.filter_by(user_id=user_id),detector_backend="opencv")
-            ret, buffer = cv2.imencode('.jpg', frame)
-            analyzed_frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + analyzed_frame + b'\r\n')  # concat frame one by one and show result
-            
+
+# Initialize dependencies
+face_recognizer = FaceRecognizer()
+face_recognizer.load_model(model_name="VGG-Face")
+# face_analyzer = FaceAnalyzer()
+video_analyzer =VideoAnalyzer(face_recognizer)
+
+
+def gen_frames(user_id):
+    """
+    Generator function that continuously yields analyzed frames.
+    """
+    try:
+        # Start capture thread
+        url = "http://192.168.1.5:8080/video"
+        cap = cv2.VideoCapture(url)
+        saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
+        
+        try:
+            while True:
+                success, frame = cap.read()
+                if success:
+                    analyzed_frame, _, _ = video_analyzer.analyze_video(
+                                            frame,
+                                            saved_visitors,
+                                            detector_backend="opencv")
+                    # Encode frame and yield response
+                    ret, buffer = cv2.imencode('.jpg', analyzed_frame)
+                    frame = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                else:
+                    break
+        except Exception as e:
+            print(f"Error in video capture_frames: {e}")
+
+        
+    except Exception as e:
+        print(f"Error in video gen_frames: {e}")
+    finally:
+        # Stop capture thread and release resources
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+
 @blueprint.route('/video/<int:user_id>')
 def video_feed(user_id):
+    """
+    Route that serves the video feed.
+    """
     return Response(stream_with_context(gen_frames(user_id)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
