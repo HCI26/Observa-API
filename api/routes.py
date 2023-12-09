@@ -1,4 +1,3 @@
-
 from flask import Blueprint, abort, request, Response, stream_with_context
 # import api.service as service
 
@@ -24,11 +23,84 @@ def generate_fake_users(count):
     return "<h1>Generated {} fake users</h1>".format(count), 201
 
 
-from flask import request
+from flask import request, jsonify
 from deepface import DeepFace
 from api import db
 from models import SavedVisitor
-import os
+import os, json
+
+@blueprint.route("/change_data/<int:id>", methods=["GET","POST"])
+def change_data(id):
+    row_to_update = User.query.get(id)
+
+    if request.method == 'POST':
+        input_args = request.get_json()
+
+        if input_args is None:
+            return {"message": "empty input set passed"}
+
+        if input_args.get("username") is not None:
+            row_to_update.username = input_args.get("username")
+        if input_args.get("passhash") is not None:
+            row_to_update.passhash = input_args.get("passhash")
+        if input_args.get("email") is not None:
+            row_to_update.email = input_args.get("email")
+        if input_args.get("number") is not None:
+            row_to_update.number = input_args.get("number")
+        if input_args.get("full_name") is not None:
+            row_to_update.full_name = input_args.get("full_name")
+        if input_args.get("city") is not None:
+            row_to_update.city = input_args.get("city")
+        if input_args.get("address") is not None:
+            row_to_update.address = input_args.get("address")            
+        
+        db.session.commit()
+        return{"message": "User data updated successfully"}, 201
+    return{"message": "failed to update user"}
+
+@blueprint.route("/settings/<int:id>", methods=["GET"])
+def settings(id):
+    user_data = User.query.get(id)
+    
+    if user_data is None:
+        return jsonify({"error": "failed to load user data"}), 404
+
+    return json.dumps({"username": user_data.username,
+            "passhash": user_data.passhash,
+            "email": user_data.email,
+            "phone_number": user_data.phone_number,
+            "full_name": user_data.full_name,
+            "date_of_birth": user_data.date_of_birth.strftime("%Y-%m-%d"),
+            "city": user_data.city,
+            "country": user_data.country,
+            "gender": user_data.gender,
+            #"address": user_data.address
+            })
+
+@blueprint.route("/history/<int:user_id>", methods=["GET"])
+def get_visitors(user_id):
+    user = User.query.get(user_id)
+
+    if user is None:
+        return jsonify({'error': 'User not found'}), 404
+
+    visitors = SavedVisitor.query.filter_by(user_id=id).all()
+
+    # Convert visitors to a list of dictionaries
+    visitors_list = [
+        {
+            'id': visitor.id,
+            'name': visitor.name,
+            'relationship': visitor.relationship,
+            'embedding': visitor.embedding,
+            'last_visited': visitor.last_visited
+        }
+        for visitor in visitors
+    ]
+
+    return jsonify({'visitors': visitors_list})
+
+
 
 @blueprint.route("/add_visitor", methods=["POST"])
 def add_visitor():
@@ -88,8 +160,8 @@ def gen_frames(user_id):
     """
     try:
         # Start capture thread
-        url = "http://192.168.1.5:8080/video"
-        cap = cv2.VideoCapture(url)
+        url = "http://192.168.1.17:8080/video"
+        cap = cv2.VideoCapture(0)
         saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
         
         try:
@@ -99,7 +171,7 @@ def gen_frames(user_id):
                     analyzed_frame, _, _ = video_analyzer.analyze_video(
                                             frame,
                                             saved_visitors,
-                                            detector_backend="opencv")
+                                            detector_backend="retinaface")
                     # Encode frame and yield response
                     ret, buffer = cv2.imencode('.jpg', analyzed_frame)
                     frame = buffer.tobytes()
