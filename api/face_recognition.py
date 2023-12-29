@@ -1,3 +1,4 @@
+import datetime
 import os
 import time
 import numpy as np
@@ -6,6 +7,8 @@ import cv2
 from deepface import DeepFace
 from deepface.commons import functions, distance as dst
 from sqlalchemy.orm import Query
+from models import User,SavedVisitor
+from api import db
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -19,6 +22,21 @@ class FaceRecognizer:
         self.target_size = functions.find_target_size(model_name=model_name)
         self.model = DeepFace.build_model(model_name=model_name)
 
+    def update_visitor_last_visit(self, face_obj: dict, visitor:SavedVisitor):
+        """
+        Updates the last_visited time for the identified visitor in the database.
+
+        Args:
+            session: SQLAlchemy session object.
+            face_obj: Dictionary containing face information (identity, distance).
+            user_id: User ID associated with the saved visitors.
+        """
+        if face_obj["distance"] <= 0.2:  # adjust threshold as needed
+            identity = face_obj["identity"]
+            if visitor:
+                visitor.last_visited = datetime.datetime.utcnow()
+                db.session.commit()
+            
     def find_in_db(
         self,
         img_path,
@@ -99,6 +117,7 @@ class FaceRecognizer:
 
             distances = []
             identities = []
+            visitors = []
             for saved_visitor in saved_visitors:
                 source_representation = saved_visitor.embedding
                 
@@ -116,23 +135,29 @@ class FaceRecognizer:
                 
                 identities.append(saved_visitor.name)
                 distances.append(distance)
+                visitors.append(saved_visitor)
 
             result_df["distance"] = distances
             result_df["identity"] = identities
+            result_df["visitor"] = visitors
             threshold = dst.findThreshold(model_name, distance_metric)
             # result_df = result_df.drop(columns=[f"{model_name}_representation"])
-            result_df = result_df[result_df["distance"] <= threshold]
+            result_df = result_df[result_df["distance"] <= 0.2]
             result_df = result_df.sort_values(
                 by=["distance"], ascending=True
             ).reset_index(drop=True)
-
+            if result_df["visitor"].shape[0] != 0:
+                result_df["visitor"][0].last_visited = datetime.datetime.utcnow()
+                db.session.commit()
+            result_df = result_df.drop(columns=["visitor"])
             resp_obj.append(result_df)
 
         toc = time.time()
 
         if not silent:
             print("find function lasts ", toc - tic, " seconds")
-
+        
+        
         return resp_obj
 
 
@@ -199,6 +224,7 @@ class VideoAnalyzer:
         resolution_x = img.shape[1]
         resolution_y = img.shape[0]
 
+        recognition_results = None
         freeze = False
         face_detected = False
         face_included_frames = 0  # freeze screen if face detected sequantially 5 frames
@@ -316,6 +342,6 @@ class VideoAnalyzer:
                             2,
                         )
 
-        return img, freeze, face_detected
+        return img, recognition_results, freeze, face_detected
 
 

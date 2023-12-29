@@ -151,6 +151,7 @@ def add_visitor():
 face_recognizer = FaceRecognizer()
 face_recognizer.load_model(model_name="VGG-Face")
 # face_analyzer = FaceAnalyzer()
+
 video_analyzer =VideoAnalyzer(face_recognizer)
 
 
@@ -158,37 +159,38 @@ def gen_frames(user_id):
     """
     Generator function that continuously yields analyzed frames.
     """
-    try:
-        # Start capture thread
-        url = "http://192.168.1.17:8080/video"
-        cap = cv2.VideoCapture(0)
-        saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
-        
-        try:
-            while True:
-                success, frame = cap.read()
-                if success:
-                    analyzed_frame, _, _ = video_analyzer.analyze_video(
-                                            frame,
-                                            saved_visitors,
-                                            detector_backend="retinaface")
-                    # Encode frame and yield response
-                    ret, buffer = cv2.imencode('.jpg', analyzed_frame)
-                    frame = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                            b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                else:
-                    break
-        except Exception as e:
-            print(f"Error in video capture_frames: {e}")
+    # try:
+    # Start capture thread
+    url = "http://192.168.1.17:8080/video"
+    cap = cv2.VideoCapture(0)
+    saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
+
+    # try:
+    while True:
+        success, frame = cap.read()
+        if success:
+            analyzed_frame, _, _, _ = video_analyzer.analyze_video(
+                                    frame,
+                                    saved_visitors,
+                                    detector_backend="retinaface",
+                                    enable_face_analysis=False)
+            # Encode frame and yield response
+            ret, buffer = cv2.imencode('.jpg', analyzed_frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        else:
+            break
+        # except Exception as e:
+        #     print(f"Error in video capture_frames: {e}")
 
         
-    except Exception as e:
-        print(f"Error in video gen_frames: {e}")
-    finally:
-        # Stop capture thread and release resources
-        cap.release()
-        cv2.destroyAllWindows()
+    # except Exception as e:
+    #     print(f"Error in video gen_frames: {e}")
+    # finally:
+    # Stop capture thread and release resources
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 
