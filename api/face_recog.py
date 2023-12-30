@@ -193,9 +193,9 @@ class FaceRecognizer:
                         h=target_region["h"]
                         face_img = img_path[y:y+h, x:x+w]  # Extract face region from the original image
 
-                        
                         image_filename = f"unknown_visitor_{uuid.uuid4()}.jpg"
                         image_path = os.path.join("unknown_visitors", image_filename)  
+                        
                         cv2.imwrite(image_path, face_img)
                         # Create the unknown visitor in the database
                         unknown_visitor = SavedVisitor(
@@ -205,7 +205,7 @@ class FaceRecognizer:
                         )
                         db.session.add(unknown_visitor)
                         db.session.commit()
-                        user = User.query.filter_by(id=current_user_id)
+                        user = User.query.filter_by(id=current_user_id).first()
                         send_notification("Observa - Unknown visitor",user.email,"Unknown visitor found at your doorstep.")
                         
                         self.pending_unknown_visitor = None  # Reset for potential new unknown visitors

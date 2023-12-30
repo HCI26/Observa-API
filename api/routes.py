@@ -369,10 +369,11 @@ def gen_frames(user_id):
 
 
 
-@blueprint.route('/video/<int:user_id>')
-def video_feed(user_id):
+@blueprint.route('/api/video/', methods=["GET"])
+# @auth.login_required
+def video_feed():
     """
     Route that serves the video feed.
     """
-    return Response(stream_with_context(gen_frames(user_id)),
+    return Response(stream_with_context(gen_frames(5)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
