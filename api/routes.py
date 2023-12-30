@@ -1,4 +1,4 @@
-from flask import Blueprint, abort, request, Response, stream_with_context
+from flask import Blueprint, abort, request, Response, stream_with_context, Flask
 # import api.service as service
 
 import cv2
@@ -7,12 +7,168 @@ from datetime import datetime
 # from main import app
 import api.fake as fake
 from api import db
-from api.face_recognition import FaceRecognizer,FaceAnalyzer,VideoAnalyzer
+from api.face_recog import FaceRecognizer,FaceAnalyzer,VideoAnalyzer,VideoAnalysisOutput
+from datetime import date
+from flask import request, jsonify
+from deepface import DeepFace
+from api import db
+from models import SavedVisitor
+import os, json
+from api.UserDTO import UserDTO
+from api.VisitorDTO import VisitorDTO
+from flask_cors import CORS
+import base64
+import numpy as np
+import uuid
 
 blueprint = Blueprint("routes", __name__)
+CORS(blueprint)
+'''End point that lists the current user's information'''
+@blueprint.route("/api/user/info", methods=["GET"])
+def get_user_info():
+    user_id = 1 # TODO: change to cookie
+    user = User.query.get(user_id)
+    if user is None:
+        abort(404, description="User not found") # return 404 not found
+
+    user_dto = UserDTO(
+        username=user.username,
+        fullname=user.full_name,
+        email=user.email,
+        phonenumber=user.phone_number,
+        dateofbirth=user.date_of_birth,
+        country=user.country,
+        city=user.city,
+        gender=user.gender,
+        address=user.address
+    )
+    print(user_dto)
+    return jsonify(user_dto.__dict__)
+
+'''End point that lists the current user's visitors'''
+@blueprint.route("/api/user/visitors/get", methods=["GET"])
+def list_users_of_visitors():
+    user_id = 1 # TODO: change to cookie
+    saved_visitors = SavedVisitor.query.filter_by(user_id=user_id).all()
+    if not saved_visitors:
+        return jsonify("[]")
+    visitors_dtos=[
+        VisitorDTO(
+            id=visitor.id,
+            name=visitor.name,
+            relation=visitor.relationship,
+            date=12312412412,            # TODO: Change date to epochtime in database
+            image_path= visitor.image_path
+        )
+        for visitor in saved_visitors
+    ]
+    return jsonify(visitors=[visitor_dto.__dict__ for visitor_dto in visitors_dtos])
+
+def save_image(file):
+    # Save the image to a specific directory or process it as needed
+    # For example, save the file to the 'uploads' folder
+    file.save('dataset/' + file.filename)
+    return 'dataset/' + file.filename
 
 
+@blueprint.route('/api/user/visitors/add', methods=['POST'])
+def add_visitor():
+    # Assuming the VisitorDTO is sent as JSON data
+    userID = 1  # TODO : Change user ID to cookie
+    name = request.form.get('name')
+    relation = request.form.get('relation')
+    if 'image' not in request.files:
+        abort(401)
+    image_file = request.files["image"]
+    extension = image_file.filename.split('.')[1]
+    path = "uploads/" + str(uuid.uuid4()) + "." + extension
+    if image_file:
+        image_file.save(path)
 
+    try:
+        result = DeepFace.represent(img_path=path,
+                                    model_name="VGG-Face",
+                                    detector_backend="retinaface",
+                                    enforce_detection=True,
+                                    align=True)
+    except:
+        abort(Response("no face detected in image", 400))
+
+    if len(result) == 0:
+        abort(Response("no face detected in image", 400))
+
+    embedding = result[0]["embedding"]
+    new_visitor = SavedVisitor(
+        name=name,
+        relationship=relation,
+        user_id=userID,
+        embedding = embedding,
+        img_path=path        
+    )
+    db.session.add(new_visitor)
+    db.session.commit()
+
+
+    return "Visitor created successfully", 201
+
+@blueprint.route('/api/user/visitors/edit', methods=['POST'])
+def edit_visitor():
+    # Assuming the VisitorDTO is sent as JSON data
+    data = request.json
+    userID = 1  # TODO : Change user ID to cookie
+
+    name = request.form.get('name')
+    relation = request.form.get('relation')
+    id = request.form.get('id')
+    if 'image' not in request.files:
+        abort(401)
+    image_file = request.files["image"]
+    extension = image_file.filename.split('.')[1]
+    path = "uploads/" + str(uuid.uuid4()) + "." + extension
+    if image_file:
+        image_file.save(path)
+
+    try:
+        result = DeepFace.represent(img_path=path,
+                                    model_name="VGG-Face",
+                                    detector_backend="retinaface",
+                                    enforce_detection=True,
+                                    align=True)
+    except:
+        abort(Response("no face detected in image", 400))
+
+    if len(result) == 0:
+        abort(Response("no face detected in image", 400))
+
+    embedding = result[0]["embedding"]
+    new_visitor = SavedVisitor(
+        name=name,
+        relationship=relation,
+        user_id=userID,
+        id=id,
+        embedding = embedding,
+        img_path=path
+    )
+    visitor = SavedVisitor.query.filter_by(id=id).first()
+    db.session.delete(visitor)
+    db.session.commit()
+    db.session.add(new_visitor)
+    db.session.commit()
+
+
+    # return jsonify(image_path)
+    return "Visitor edited successfully", 201
+
+@blueprint.route('/user/visitors/delete/<int:id>', methods=['DELETE'])
+def delete_visitor(id):
+    userID = 1  # TODO : Change user ID to cookie
+    visitor = SavedVisitor.query.filter_by(id=id).first()
+    db.session.delete(visitor)
+    db.session.commit()
+
+    return{"message": "Visitor deleted successfully"}, 201
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' # My edits is before this line
 @blueprint.route("/")
 def home():
     return "<h1>Welcome to DeepFace API!</h1>"
@@ -21,13 +177,6 @@ def home():
 def generate_fake_users(count):
     fake.users(count)
     return "<h1>Generated {} fake users</h1>".format(count), 201
-
-
-from flask import request, jsonify
-from deepface import DeepFace
-from api import db
-from models import SavedVisitor
-import os, json
 
 @blueprint.route("/change_data/<int:id>", methods=["GET","POST"])
 def change_data(id):
@@ -84,7 +233,7 @@ def get_visitors(user_id):
     if user is None:
         return jsonify({'error': 'User not found'}), 404
 
-    visitors = SavedVisitor.query.filter_by(user_id=id).all()
+    visitors = SavedVisitor.query.filter_by(id=id).all()
 
     # Convert visitors to a list of dictionaries
     visitors_list = [
@@ -100,10 +249,8 @@ def get_visitors(user_id):
 
     return jsonify({'visitors': visitors_list})
 
-
-
 @blueprint.route("/add_visitor", methods=["POST"])
-def add_visitor():
+def addvisitor():
     input_args = request.get_json()
 
     if input_args is None:
@@ -153,42 +300,35 @@ face_recognizer.load_model(model_name="VGG-Face")
 # face_analyzer = FaceAnalyzer()
 
 video_analyzer =VideoAnalyzer(face_recognizer)
-
-
 def gen_frames(user_id):
     """
     Generator function that continuously yields analyzed frames.
     """
-    # try:
-    # Start capture thread
+
     url = "http://192.168.1.17:8080/video"
     cap = cv2.VideoCapture(0)
-    saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
-
-    # try:
+    
     while True:
         success, frame = cap.read()
+        saved_visitors = SavedVisitor.get_saved_visitors(user_id)
+        unknown_visitors = SavedVisitor.get_unknown_visitors(user_id)
         if success:
-            analyzed_frame, _, _, _ = video_analyzer.analyze_video(
+            output:VideoAnalysisOutput = video_analyzer.analyze_video(
                                     frame,
-                                    saved_visitors,
-                                    detector_backend="retinaface",
+                                    current_user_id=user_id,
+                                    saved_visitors=saved_visitors,
+                                    unknown_visitors=unknown_visitors,
+                                    detector_backend="opencv",
+                                    model_name="VGG-Face",
                                     enable_face_analysis=False)
+            
             # Encode frame and yield response
-            ret, buffer = cv2.imencode('.jpg', analyzed_frame)
+            ret, buffer = cv2.imencode('.jpg', output.drawn_img)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         else:
             break
-        # except Exception as e:
-        #     print(f"Error in video capture_frames: {e}")
-
-        
-    # except Exception as e:
-    #     print(f"Error in video gen_frames: {e}")
-    # finally:
-    # Stop capture thread and release resources
     cap.release()
     cv2.destroyAllWindows()
 
