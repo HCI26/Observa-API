@@ -369,11 +369,14 @@ def gen_frames(user_id):
 
 
 
-@blueprint.route('/api/video/', methods=["GET"])
-# @auth.login_required
-def video_feed():
+@blueprint.route('/api/video/<token>', methods=["GET"])
+def video_feed(token):
     """
     Route that serves the video feed.
     """
-    return Response(stream_with_context(gen_frames(5)),
+    print(token)
+    user = User.verify_auth_token(token)
+    if user is None:
+        abort(401)
+    return Response(stream_with_context(gen_frames(user.id)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
