@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import time
 from itsdangerous import TimedSerializer as Serializer
+import string, secrets
 
 Sec_key = 'the quick brown fox jumps over the lazy dog'
 
@@ -43,7 +44,14 @@ class User(db.Model):
     #TODO OAuthentiaction
     
     #TODO Reset Password
-    
+    def generate_random_password(self, length=12):
+        user = User.query.filter_by(email = self.email).first()
+        if not user:
+            return 
+        else:
+            characters = string.ascii_letters + string.digits + string.punctuation
+            password = ''.join(secrets.choice(characters) for _ in range(length))
+            return password
     #TODO SendMails
         
     def __repr__(self):

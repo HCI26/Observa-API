@@ -8,7 +8,6 @@ from models import User,SavedVisitor
 from datetime import datetime
 import api.fake as fake
 from api import db
-from api.face_recognition import FaceRecognizer,FaceAnalyzer,VideoAnalyzer
 from api import mail
 
 blueprint1 = Blueprint("routes_verify", __name__)
@@ -71,15 +70,20 @@ def reset():
     username = request.json.get('username')
     user = User.query.filter_by(username=username).first()
     if not user:
-        return 403
+        abort(403)
     if not user.email:
-        return 401
-        
-        
+        abort(401)
+    generated_password = user.generate_random_password()
+    msg = Message('Password Reset', sender='observah60@gmail.com', recipients=[user.email])
+    msg.body = f"Hi, {user.username}\n\tYour generated password is "+generated_password+" \nChange this as soon as possible, for your security concerns.\nObserva Support"
+    mail.send(msg)
+    user.hash_password(generated_password)
+    db.session.commit()
+    return "Message Sent Successfully",201 
+
 @blueprint1.route('/sendmail')
 def send_mail():
-    msg = Message('test_subject', sender='observah60@gmail.com', recipients=['moustafaesam20113@gmail.com'])
-    msg.body = "testtestetst"
+    msg = Message('<Password Reset>', sender='observah60@gmail.com', recipients=['moustafaesam20113@gmail.com'])
+    msg.body = "Hi, Moustafa"
     mail.send(msg)
-    print("Message")
     return "Message Sent Successfully",201
