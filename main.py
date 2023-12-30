@@ -12,6 +12,7 @@ if gpus:
     # Memory growth must be set before GPUs have been initialized
         print(e)
 
+
 from flask_migrate import Migrate
 from api import create_app, db
 app = create_app()
