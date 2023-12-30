@@ -7,7 +7,7 @@ from datetime import datetime
 # from main import app
 import api.fake as fake
 from api import db
-from api.face_recognition import FaceRecognizer,FaceAnalyzer,VideoAnalyzer
+from api.face_recog import FaceRecognizer,FaceAnalyzer,VideoAnalyzer,VideoAnalysisOutput
 from datetime import date
 from flask import request, jsonify
 from deepface import DeepFace
@@ -58,7 +58,7 @@ def list_users_of_visitors():
             name=visitor.name,
             relation=visitor.relationship,
             date=12312412412,            # TODO: Change date to epochtime in database
-            img_path=""
+            image_path= visitor.image_path
         )
         for visitor in saved_visitors
     ]
@@ -300,42 +300,35 @@ face_recognizer.load_model(model_name="VGG-Face")
 # face_analyzer = FaceAnalyzer()
 
 video_analyzer =VideoAnalyzer(face_recognizer)
-
-
 def gen_frames(user_id):
     """
     Generator function that continuously yields analyzed frames.
     """
-    # try:
-    # Start capture thread
+
     url = "http://192.168.1.17:8080/video"
     cap = cv2.VideoCapture(0)
-    saved_visitors = SavedVisitor.query.filter_by(user_id=user_id)
-
-    # try:
+    
     while True:
         success, frame = cap.read()
+        saved_visitors = SavedVisitor.get_saved_visitors(user_id)
+        unknown_visitors = SavedVisitor.get_unknown_visitors(user_id)
         if success:
-            analyzed_frame, _, _, _ = video_analyzer.analyze_video(
+            output:VideoAnalysisOutput = video_analyzer.analyze_video(
                                     frame,
-                                    saved_visitors,
-                                    detector_backend="retinaface",
+                                    current_user_id=user_id,
+                                    saved_visitors=saved_visitors,
+                                    unknown_visitors=unknown_visitors,
+                                    detector_backend="opencv",
+                                    model_name="VGG-Face",
                                     enable_face_analysis=False)
+            
             # Encode frame and yield response
-            ret, buffer = cv2.imencode('.jpg', analyzed_frame)
+            ret, buffer = cv2.imencode('.jpg', output.drawn_img)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         else:
             break
-        # except Exception as e:
-        #     print(f"Error in video capture_frames: {e}")
-
-        
-    # except Exception as e:
-    #     print(f"Error in video gen_frames: {e}")
-    # finally:
-    # Stop capture thread and release resources
     cap.release()
     cv2.destroyAllWindows()
 
