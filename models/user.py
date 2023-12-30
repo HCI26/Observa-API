@@ -18,7 +18,7 @@ class User(db.Model):
     city = db.Column(db.String(64))
     country = db.Column(db.String(64), nullable=False)
     gender = db.Column(db.String(6))
-    address = db.column(db.String(64))
+    address = db.Column(db.String(64))
     saved_visitors = db.relationship('SavedVisitor', back_populates='user', lazy=True)
     #TODO AUTHENTICATION
     
