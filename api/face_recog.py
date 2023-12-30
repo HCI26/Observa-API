@@ -6,10 +6,11 @@ import cv2
 from deepface import DeepFace
 from deepface.commons import functions, distance as dst
 from api.drawer import FaceDrawer, ImageDrawer
-from models import UnknownVisitor,SavedVisitor,Visit
+from models import UnknownVisitor,SavedVisitor,Visit, User
 import uuid
 from api import db
 from collections import deque 
+from api.send_notifications import send_notification
 
 
 class FaceMatch:
@@ -192,7 +193,7 @@ class FaceRecognizer:
                         h=target_region["h"]
                         face_img = img_path[y:y+h, x:x+w]  # Extract face region from the original image
 
-
+                        
                         image_filename = f"unknown_visitor_{uuid.uuid4()}.jpg"
                         image_path = os.path.join("unknown_visitors", image_filename)  
                         cv2.imwrite(image_path, face_img)
@@ -204,6 +205,8 @@ class FaceRecognizer:
                         )
                         db.session.add(unknown_visitor)
                         db.session.commit()
+                        user = User.query.filter_by(id=current_user_id)
+                        send_notification("Observa - Unknown visitor",user.email,"Unknown visitor found at your doorstep.")
                         
                         self.pending_unknown_visitor = None  # Reset for potential new unknown visitors
                 else:
