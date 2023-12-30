@@ -1,8 +1,9 @@
-from flask import Blueprint, abort, request, Response, stream_with_context, Flask
+from flask import Blueprint, abort, request, Response, stream_with_context, Flask, g, send_file
 # import api.service as service
+from flask_httpauth import HTTPTokenAuth
 
 import cv2
-from models import User,SavedVisitor
+from models import User,SavedVisitor,Visit
 from datetime import datetime
 # from main import app
 import api.fake as fake
@@ -11,7 +12,7 @@ from api.face_recog import FaceRecognizer,FaceAnalyzer,VideoAnalyzer,VideoAnalys
 from datetime import date
 from flask import request, jsonify
 from deepface import DeepFace
-from api import db
+from api import db, auth
 from models import SavedVisitor
 import os, json
 from api.UserDTO import UserDTO
@@ -24,10 +25,13 @@ import uuid
 blueprint = Blueprint("routes", __name__)
 CORS(blueprint)
 '''End point that lists the current user's information'''
+
 @blueprint.route("/api/user/info", methods=["GET"])
+@auth.login_required
 def get_user_info():
-    user_id = 1 # TODO: change to cookie
-    user = User.query.get(user_id)
+    # user_id = 1 # TODO: change to cookie
+    # user = User.query.get(user_id)
+    user = g.user
     if user is None:
         abort(404, description="User not found") # return 404 not found
 
@@ -46,10 +50,12 @@ def get_user_info():
     return jsonify(user_dto.__dict__)
 
 '''End point that lists the current user's visitors'''
+
 @blueprint.route("/api/user/visitors/get", methods=["GET"])
+@auth.login_required
 def list_users_of_visitors():
-    user_id = 1 # TODO: change to cookie
-    saved_visitors = SavedVisitor.query.filter_by(user_id=user_id).all()
+    # user_id = 1 # TODO: change to cookie
+    saved_visitors = SavedVisitor.query.filter_by(user_id=g.user.id).all()
     if not saved_visitors:
         return jsonify("[]")
     visitors_dtos=[
@@ -58,7 +64,7 @@ def list_users_of_visitors():
             name=visitor.name,
             relation=visitor.relationship,
             date=12312412412,            # TODO: Change date to epochtime in database
-            image_path= visitor.image_path
+            img_path= visitor.image_path
         )
         for visitor in saved_visitors
     ]
@@ -71,10 +77,18 @@ def save_image(file):
     return 'dataset/' + file.filename
 
 
+@blueprint.route('/uploads/<filename>', methods=['GET'])
+def get_image(filename):
+    try:
+        return send_file(f'{os.getcwd()}/uploads/{filename}', as_attachment=True)
+    except FileNotFoundError:
+        abort(404)
+
 @blueprint.route('/api/user/visitors/add', methods=['POST'])
+@auth.login_required
 def add_visitor():
     # Assuming the VisitorDTO is sent as JSON data
-    userID = 1  # TODO : Change user ID to cookie
+    userID = g.user.id 
     name = request.form.get('name')
     relation = request.form.get('relation')
     if 'image' not in request.files:
@@ -103,7 +117,7 @@ def add_visitor():
         relationship=relation,
         user_id=userID,
         embedding = embedding,
-        img_path=path        
+        image_path=path        
     )
     db.session.add(new_visitor)
     db.session.commit()
@@ -111,11 +125,11 @@ def add_visitor():
 
     return "Visitor created successfully", 201
 
+
 @blueprint.route('/api/user/visitors/edit', methods=['POST'])
+@auth.login_required
 def edit_visitor():
-    # Assuming the VisitorDTO is sent as JSON data
-    data = request.json
-    userID = 1  # TODO : Change user ID to cookie
+    userID = g.user.id
 
     name = request.form.get('name')
     relation = request.form.get('relation')
@@ -159,9 +173,11 @@ def edit_visitor():
     # return jsonify(image_path)
     return "Visitor edited successfully", 201
 
+
 @blueprint.route('/user/visitors/delete/<int:id>', methods=['DELETE'])
+@auth.login_required
 def delete_visitor(id):
-    userID = 1  # TODO : Change user ID to cookie
+
     visitor = SavedVisitor.query.filter_by(id=id).first()
     db.session.delete(visitor)
     db.session.commit()
@@ -178,9 +194,11 @@ def generate_fake_users(count):
     fake.users(count)
     return "<h1>Generated {} fake users</h1>".format(count), 201
 
-@blueprint.route("/change_data/<int:id>", methods=["GET","POST"])
-def change_data(id):
-    row_to_update = User.query.get(id)
+
+@blueprint.route("/change_data", methods=["GET","POST"])
+@auth.verify_token
+def change_data():
+    row_to_update = g.user
 
     if request.method == 'POST':
         input_args = request.get_json()
@@ -207,9 +225,11 @@ def change_data(id):
         return{"message": "User data updated successfully"}, 201
     return{"message": "failed to update user"}
 
-@blueprint.route("/settings/<int:id>", methods=["GET"])
-def settings(id):
-    user_data = User.query.get(id)
+
+@blueprint.route("/settings", methods=["GET"])
+@auth.verify_token
+def settings():
+    user_data = g.user
     
     if user_data is None:
         return jsonify({"error": "failed to load user data"}), 404
@@ -248,6 +268,21 @@ def get_visitors(user_id):
     ]
 
     return jsonify({'visitors': visitors_list})
+
+
+@blueprint.route("/api/history", methods=["GET"])
+def get_history():
+    history = Visit.query.filter_by(user_id=g.user.id).all()
+    # history_out = [
+    #     {
+    #         'id': visitor.id,
+    #         'name': visitor.name,
+    #         'relationship': visitor.relationship,
+    #         'embedding': visitor.embedding,
+    #         'last_visited': visitor.last_visited
+    #     }
+    #     for visit in history
+    # ]
 
 @blueprint.route("/add_visitor", methods=["POST"])
 def addvisitor():

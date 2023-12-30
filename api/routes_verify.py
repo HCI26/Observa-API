@@ -8,12 +8,11 @@ from models import User,SavedVisitor
 from datetime import datetime
 import api.fake as fake
 from api import db
-from api import mail
+from api import mail,auth
 
 blueprint1 = Blueprint("routes_verify", __name__)
 CORS(blueprint1)
 
-auth = HTTPTokenAuth(scheme='Bearer')
 
 @auth.verify_token
 def verify_password(token):
@@ -42,7 +41,7 @@ def new_user():
     address = request.json.get('address')
     if username is None or passhash is None:
         abort(400)
-    if User.query.filter_by(username = username).first() is not None:
+    if User.query.filter_by(username = username).first() is not None or User.query.filter_by(email = email).first() is not None:
         abort(400)
     
     user = User(username = username, email=email, phone_number = phone_number, full_name = full_name,
@@ -50,7 +49,7 @@ def new_user():
     user.hash_password(passhash)
     db.session.add(user)
     db.session.commit()
-    token = user.generate_auth_token(600)
+    token = user.generate_auth_token(6000)
     return jsonify({'username': user.username,'token': token})
 
 
@@ -62,7 +61,7 @@ def log_in():
     if not user or not user.verify_password(passhash):
         abort(401)
     
-    token = user.generate_auth_token(600)
+    token = user.generate_auth_token(6000)
     return jsonify({'data': 'Hello, %s!' % user.username, 'token': token})
 
 @blueprint1.route('/api/users/reset_password', methods=['POST'])

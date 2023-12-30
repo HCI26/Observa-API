@@ -2,10 +2,14 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
+from flask_httpauth import HTTPTokenAuth
+
 
 db = SQLAlchemy()
 Sec_key = 'the quick brown fox jumps over the lazy dog'
 mail = Mail()
+auth = HTTPTokenAuth(scheme='Bearer')
+
 
 def preload_deepface():
     from deepface import DeepFace
@@ -35,7 +39,7 @@ def create_app():
     app.config['MAIL_PASSWORD'] = 'qkkvofrslzcalehp'
     app.config['MAIL_DEFAULT_SENDER'] = 'observah60@gmail.com'
     
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres@localhost/Observa'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:271202@localhost/Observa'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
     db.init_app(app)
